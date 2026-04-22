@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fast Fashion · PFAS World Index</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #080b12; --surface: #0f1219; --border: #1a1f2e;
+  --text: #e8eaf2; --muted: #4a5070; --accent: #ff3b5c;
+}
+body { background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+header {
+  padding:14px 32px; display:flex; align-items:center; gap:20px;
+  border-bottom:1px solid var(--border); flex-shrink:0;
+  background:linear-gradient(180deg,#0c0f18 0%,transparent 100%);
+}
+.hl h1 { font-family:'Bebas Neue',sans-serif; font-size:1.85rem; letter-spacing:.08em; line-height:1; }
+.hl h1 span { color:var(--accent); }
+.hl .sub { font-size:.6rem; color:var(--muted); letter-spacing:.2em; text-transform:uppercase; margin-bottom:2px; }
+.hl .source { font-size:.58rem; color:#2e3550; letter-spacing:.1em; margin-top:2px; }
+
+.legend { margin-left:auto; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.li { display:flex; align-items:center; gap:6px; font-size:.62rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; }
+.dot { width:8px; height:8px; border-radius:50%; }
+
+.body { display:flex; flex:1; overflow:hidden; }
+
+.map-wrap { flex:1; position:relative; overflow:hidden; background:radial-gradient(ellipse at 50% 55%,#0a1022 0%,var(--bg) 75%); }
+#map-svg { width:100%; height:100%; display:block; }
+.land { fill:#141926; stroke:#090c14; stroke-width:.4; }
+.country { cursor:pointer; stroke:#090c14; stroke-width:.5; transition:filter .12s, stroke-width .12s, stroke .12s; }
+.country:hover { filter:brightness(1.5); stroke-width:1; stroke:rgba(255,255,255,.45); }
+.country.sel { filter:brightness(1.9); stroke-width:1.6; stroke:#ffffff; }
+
+.tt {
+  position:absolute; pointer-events:none;
+  background:rgba(10,13,22,.97); border:1px solid var(--border); border-radius:6px;
+  padding:7px 13px; font-size:.71rem; color:var(--text);
+  white-space:nowrap; opacity:0; transition:opacity .1s; z-index:20;
+  line-height:1.5;
+}
+.tt.on { opacity:1; }
+.tt-rank { color:var(--accent); font-family:'Bebas Neue',sans-serif; font-size:.9rem; margin-right:4px; }
+
+.hint {
+  position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+  font-size:.6rem; color:var(--muted); letter-spacing:.14em; text-transform:uppercase;
+  pointer-events:none; animation:pulse 2.8s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:.25} 50%{opacity:.75} }
+
+/* PANEL */
+.panel { width:310px; flex-shrink:0; background:var(--surface); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow-y:auto; }
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-thumb { background:var(--border); }
+
+.idle { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:32px; text-align:center; color:var(--muted); gap:14px; }
+.idle svg { opacity:.12; }
+.idle p { font-size:.74rem; line-height:1.75; }
+.idle small { font-size:.6rem; opacity:.5; margin-top:4px; letter-spacing:.08em; }
+
+.pdata { display:none; flex-direction:column; }
+.pdata.on { display:flex; }
+
+.ph { padding:20px 22px 15px; border-bottom:1px solid var(--border); position:relative; }
+.rank-tag { font-family:'Bebas Neue',sans-serif; font-size:.85rem; letter-spacing:.15em; color:var(--muted); margin-bottom:4px; }
+.rank-tag span { color:var(--accent); font-size:1.1rem; }
+.cname { font-family:'Bebas Neue',sans-serif; font-size:1.75rem; letter-spacing:.05em; line-height:1; margin-bottom:8px; }
+.badge { display:inline-block; padding:2px 9px; border-radius:3px; font-size:.58rem; font-weight:500; letter-spacing:.15em; text-transform:uppercase; }
+.bc { background:rgba(198,40,40,.18); color:#ef9a9a; border:1px solid rgba(198,40,40,.35); }
+.bh { background:rgba(230,81,0,.18); color:#ffcc80; border:1px solid rgba(230,81,0,.35); }
+.bm { background:rgba(249,168,37,.18); color:#fff59d; border:1px solid rgba(249,168,37,.35); }
+.bl { background:rgba(27,94,32,.25); color:#a5d6a7; border:1px solid rgba(27,94,32,.4); }
+.closex { position:absolute; top:18px; right:16px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:1rem; padding:4px; transition:color .15s; }
+.closex:hover { color:var(--text); }
+
+.main-stat { padding:16px 22px 14px; border-bottom:1px solid var(--border); }
+.stat-label { font-size:.58rem; color:var(--muted); letter-spacing:.16em; text-transform:uppercase; margin-bottom:5px; }
+.big-val { font-family:'Bebas Neue',sans-serif; font-size:2rem; letter-spacing:.04em; line-height:1; }
+.big-unit { font-size:.7rem; color:var(--muted); margin-left:4px; font-family:'DM Sans',sans-serif; font-weight:300; }
+.barbg { width:100%; height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin-top:10px; }
+.barfill { height:100%; border-radius:2px; transition:width .65s cubic-bezier(.16,1,.3,1); }
+.bar-caption { font-size:.58rem; color:var(--muted); margin-top:5px; letter-spacing:.06em; }
+
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.cell { background:var(--surface); padding:12px 16px; }
+.cl { font-size:.58rem; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-bottom:3px; }
+.cv { font-size:.95rem; font-weight:500; }
+
+.fsec { padding:16px 22px 20px; }
+.ft { font-size:.58rem; color:var(--muted); letter-spacing:.18em; text-transform:uppercase; margin-bottom:11px; }
+.fact { display:flex; gap:9px; margin-bottom:9px; font-size:.74rem; color:#8890aa; line-height:1.55; }
+.fact::before { content:'—'; color:var(--accent); flex-shrink:0; }
+
+.pfas-note { margin:0 22px 16px; padding:10px 12px; border-radius:4px; background:rgba(255,59,92,.05); border:1px solid rgba(255,59,92,.15); font-size:.66rem; color:#7a8099; line-height:1.6; }
+.pfas-note strong { color:#c0748a; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hl">
+    <div class="sub">PFAS Chemical Use in Textiles · Global Ranking 2024</div>
+    <h1>FAST <span>FASHION</span> PFAS INDEX</h1>
+    <div class="source">Source: Global PFAS Textile Industry Report · USD value of PFAS used per year</div>
+  </div>
+  <div class="legend">
+    <div class="li"><div class="dot" style="background:#b71c1c"></div>Critical (Top 5)</div>
+    <div class="li"><div class="dot" style="background:#e65100"></div>High (6–10)</div>
+    <div class="li"><div class="dot" style="background:#f9a825"></div>Moderate (11–20)</div>
+    <div class="li"><div class="dot" style="background:#2e7d32"></div>Low (21+)</div>
+    <div class="li"><div class="dot" style="background:#1a2035"></div>No data</div>
+  </div>
+</header>
+
+<div class="body">
+  <div class="map-wrap" id="mapwrap">
+    <svg id="map-svg"></svg>
+    <div class="tt" id="tt"></div>
+    <div class="hint">Click a highlighted country to explore PFAS data</div>
+  </div>
+  <div class="panel">
+    <div class="idle" id="idle">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <p>Click on any highlighted country to explore its PFAS textile chemical usage and fast fashion impact data.</p>
+      <small>PFAS = Per- and polyfluoroalkyl substances — toxic chemicals used in water-resistant and stain-proof textiles.</small>
+    </div>
+    <div class="pdata" id="pdata">
+      <div class="ph">
+        <button class="closex" id="closex">✕</button>
+        <div class="rank-tag">GLOBAL RANK <span id="prank">#—</span></div>
+        <div class="cname" id="pname">—</div>
+        <span class="badge" id="pbadge">—</span>
+      </div>
+      <div class="main-stat">
+        <div class="stat-label">Annual PFAS Use in Textiles</div>
+        <div><span class="big-val" id="ppfas">—</span><span class="big-unit">USD / year</span></div>
+        <div class="barbg"><div class="barfill" id="pbar"></div></div>
+        <div class="bar-caption" id="pbar-cap"></div>
+      </div>
+      <div class="pfas-note" id="pfas-note-box">
+        <strong>What is PFAS?</strong> Per- and polyfluoroalkyl substances are synthetic chemicals used in fast fashion textiles for water resistance, stain-proofing, and durability. They are called "forever chemicals" because they do not break down in the environment or the human body.
+      </div>
+      <div class="g2">
+        <div class="cell"><div class="cl">FF market share</div><div class="cv" id="pg">—</div></div>
+        <div class="cell"><div class="cl">Textile waste</div><div class="cv" id="pw">—</div></div>
+        <div class="cell"><div class="cl">Garments/yr</div><div class="cv" id="pc">—</div></div>
+        <div class="cell"><div class="cl">Recycle rate</div><div class="cv" id="pr">—</div></div>
+      </div>
+      <div class="fsec">
+        <div class="ft">Key Facts</div>
+        <div id="pfacts"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// PFAS values in USD/year from ranking table
+// level based on rank: 1-5 critical, 6-10 high, 11-20 moderate, 21+ low
+const DATA = {
+  "China":                  { rank:1,  pfas:"$4,240,000,000", pfasRaw:4240000000, level:"critical", marketShare:"13.1%", waste:"26M t/yr",   garments:"52/person", recycle:"20%", facts:["World's largest PFAS textile user — four times the US total.","Shein ships 6,000+ new styles daily, most treated with PFAS coatings.","Chinese rivers have turned colors from PFAS-laden textile dye runoff.","China's garment sector employs over 10 million workers in fast fashion."] },
+  "United States of America":{ rank:2, pfas:"$2,120,000,000", pfasRaw:2120000000, level:"critical", marketShare:"14.3%", waste:"11.3M t/yr", garments:"68/person", recycle:"14%", facts:["Second-largest PFAS textile market, driven by performance and outdoor apparel.","Americans discard ~80 lbs of clothing per person per year.","The EPA has begun restricting some PFAS in consumer products since 2023.","Only 1% of used clothing is recycled into new fiber in the US."] },
+  "Japan":                  { rank:3,  pfas:"$848,000,000",   pfasRaw:848000000,  level:"critical", marketShare:"5.5%",  waste:"1.9M t/yr",  garments:"26/person", recycle:"28%", facts:["Japan's precision textile industry uses PFAS extensively for functional apparel.","Uniqlo's technical lines (HeatTech, AIRism) rely on PFAS-treated fibers.","Japan has initiated phased restrictions on long-chain PFAS compounds.","Japan recycles a higher share of textiles than most Asian economies."] },
+  "Germany":                { rank:4,  pfas:"$636,000,000",   pfasRaw:636000000,  level:"critical", marketShare:"7.2%",  waste:"800K t/yr",  garments:"29/person", recycle:"22%", facts:["Germany is Europe's largest fashion market and 4th highest PFAS user.","Outdoor and sportswear brands like Adidas and PUMA use PFAS extensively.","Germany is pushing for an EU-wide PFAS ban in textiles by 2026.","~40% of online fashion orders are returned, compounding chemical waste."] },
+  "India":                  { rank:5,  pfas:"$530,000,000",   pfasRaw:530000000,  level:"critical", marketShare:"5.8%",  waste:"7.7M t/yr",  garments:"18/person", recycle:"30%", facts:["India is the world's second-largest garment exporter and 5th largest PFAS user.","PFAS chemicals enter groundwater near textile hubs in Gujarat and Tamil Nadu.","India's PFAS regulations remain largely absent compared to Western standards.","Textile exports account for 12% of India's total export earnings."] },
+  "South Korea":            { rank:6,  pfas:"$424,000,000",   pfasRaw:424000000,  level:"high",     marketShare:"9.0%",  waste:"1.5M t/yr",  garments:"37/person", recycle:"16%", facts:["South Korea ranks 6th globally in PFAS textile chemical use.","K-fashion's rapid trend cycles drive high PFAS-treated garment turnover.","Domestic platforms like Musinsa grew 300% in users between 2019 and 2023.","South Korea has proposed PFAS restrictions in children's clothing."] },
+  "France":                 { rank:7,  pfas:"$318,000,000",   pfasRaw:318000000,  level:"high",     marketShare:"6.1%",  waste:"650K t/yr",  garments:"24/person", recycle:"25%", facts:["France ranks 7th in PFAS textile use despite strong sustainability rhetoric.","Luxury brands use PFAS for water resistance in high-end outerwear.","France passed a 2024 law penalizing ultra-fast fashion advertising.","The Citeo scheme diverts 60% of textile waste from landfill."] },
+  "Italy":                  { rank:8,  pfas:"$212,000,000",   pfasRaw:212000000,  level:"high",     marketShare:"5.3%",  waste:"700K t/yr",  garments:"22/person", recycle:"23%", facts:["Italy is the EU's largest textile manufacturer and ranks 8th in PFAS use.","High-end Italian sportswear and outerwear brands are major PFAS consumers.","Italy's fashion industry has resisted aggressive PFAS restrictions as a trade barrier.","'Made in Italy' labels do not guarantee PFAS-free production methods."] },
+  "Russia":                 { rank:9,  pfas:"$180,200,000",   pfasRaw:180200000,  level:"high",     marketShare:"7.6%",  waste:"3.1M t/yr",  garments:"21/person", recycle:"7%",  facts:["Russia ranks 9th globally despite limited textile recycling infrastructure.","Western brand exits post-2022 increased reliance on Chinese PFAS-treated imports.","Less than 7% of discarded clothing is collected for reuse or recycling.","PFAS monitoring in Russian water systems near textile plants is minimal."] },
+  "Taiwan":                 { rank:10, pfas:"$159,000,000",   pfasRaw:159000000,  level:"high",     marketShare:"N/A",   waste:"N/A",         garments:"N/A",       recycle:"N/A", facts:["Taiwan ranks 10th globally in PFAS textile use, driven by technical apparel manufacturing.","Taiwanese companies produce performance fabrics for global fast fashion brands.","Taiwan's textile industry is a key supplier of PFAS-treated base materials.","Taiwan has begun reviewing PFAS chemical use under its chemical safety legislation."] },
+  "United Kingdom":         { rank:11, pfas:"$148,400,000",   pfasRaw:148400000,  level:"moderate", marketShare:"8.9%",  waste:"1.1M t/yr",  garments:"35/person", recycle:"18%", facts:["UK ranks 11th in PFAS textile use despite proposed fast fashion taxes.","Boohoo and ASOS are major UK-based fast fashion platforms with global reach.","The UK government began PFAS restriction consultations in 2023.","~300,000 tons of clothing goes to UK landfill each year."] },
+  "Netherlands":            { rank:12, pfas:"$127,200,000",   pfasRaw:127200000,  level:"moderate", marketShare:"5.1%",  waste:"400K t/yr",  garments:"23/person", recycle:"35%", facts:["The Netherlands ranks 12th despite being a sustainability-focused economy.","Amsterdam hosts the Fashion for Good sustainable fashion innovation hub.","Dutch consumers are among Europe's most active second-hand buyers.","PFAS contamination has been detected in Dutch waterways near textile logistics hubs."] },
+  "Canada":                 { rank:13, pfas:"$106,000,000",   pfasRaw:106000000,  level:"moderate", marketShare:"7.8%",  waste:"1.2M t/yr",  garments:"40/person", recycle:"13%", facts:["Canada ranks 13th in PFAS textile use with no mandatory take-back program.","Canadians buy an average of 40 garments per year — among the highest in the Americas.","Health Canada is reviewing PFAS limits in consumer goods including textiles.","Only 13% of discarded clothing is diverted from Canadian landfills."] },
+  "Brazil":                 { rank:14, pfas:"$84,800,000",    pfasRaw:84800000,   level:"moderate", marketShare:"8.1%",  waste:"4.8M t/yr",  garments:"22/person", recycle:"10%", facts:["Brazil ranks 14th in PFAS textile use as its fashion market rapidly expands.","Renner and C&A Brazil drive domestic consumption with PFAS-treated performance lines.","Consumer spending on fashion increased 45% between 2018 and 2023 in Brazil.","Only 10% of discarded clothing is recovered or recycled in Brazil."] },
+  "Mexico":                 { rank:15, pfas:"$74,200,000",    pfasRaw:74200000,   level:"moderate", marketShare:"5.0%",  waste:"2.2M t/yr",  garments:"19/person", recycle:"9%",  facts:["Mexico ranks 15th as a major fast fashion production hub for the US market.","PFAS from textile factories have been detected in water supplies near Guadalajara.","SHEIN's Latin American hub operates partly from Mexico, increasing PFAS flow.","Only 9% of discarded clothing is recovered or recycled in Mexico."] },
+  "Spain":                  { rank:16, pfas:"$63,600,000",    pfasRaw:63600000,   level:"moderate", marketShare:"8.4%",  waste:"900K t/yr",  garments:"32/person", recycle:"19%", facts:["Spain is home to Inditex (Zara) — the world's largest fashion retailer.","Inditex has pledged to phase out PFAS in its products by 2025.","Spain ranks 16th in PFAS use, primarily through Zara's technical apparel lines.","The Spanish government is developing its first national textile waste regulation."] },
+  "Belgium":                { rank:17, pfas:"$53,000,000",    pfasRaw:53000000,   level:"moderate", marketShare:"N/A",   waste:"N/A",         garments:"N/A",       recycle:"N/A", facts:["Belgium ranks 17th in PFAS textile use, partly driven by technical fabric manufacturing.","Belgian companies supply specialty coated textiles to European fashion brands.","PFAS contamination is a documented issue near Flemish chemical production sites.","Belgium is an active supporter of the EU-wide PFAS restriction proposal."] },
+  "Vietnam":                { rank:18, pfas:"$42,400,000",    pfasRaw:42400000,   level:"moderate", marketShare:"3.9%",  waste:"1.8M t/yr",  garments:"11/person", recycle:"18%", facts:["Vietnam ranks 18th as the world's 3rd largest garment exporter.","PFAS used in factory finishing treatments are a major source of Mekong Delta pollution.","Fast fashion production employs over 2.7 million workers in Vietnamese factories.","Vietnam has no specific PFAS textile regulations in place."] },
+  "Thailand":               { rank:19, pfas:"$31,800,000",    pfasRaw:31800000,   level:"moderate", marketShare:"4.0%",  waste:"500K t/yr",  garments:"18/person", recycle:"13%", facts:["Thailand ranks 19th as a regional fast fashion manufacturing hub.","Bangkok's Platinum Mall is one of Southeast Asia's largest fast fashion retail centers.","PFAS from Thai textile factories have been found in coastal waterways.","Domestic consumption has grown 60% since 2015 as middle incomes rise."] },
+  "Malaysia":               { rank:20, pfas:"$21,200,000",    pfasRaw:21200000,   level:"moderate", marketShare:"3.6%",  waste:"350K t/yr",  garments:"16/person", recycle:"11%", facts:["Malaysia ranks 20th in PFAS textile use, partly as a textile waste importer.","Malaysia receives large volumes of textile waste classified as 'recycling' from the West.","The government introduced import restrictions on plastic and textile waste in 2019.","Domestic fast fashion retail is expanding rapidly in Kuala Lumpur."] },
+
+  // additional countries with estimated data
+  "Indonesia":              { rank:21, pfas:"~$18,000,000",   pfasRaw:18000000,   level:"low",      marketShare:"4.7%",  waste:"3.2M t/yr",  garments:"15/person", recycle:"12%", facts:["Indonesia is one of Southeast Asia's fastest-growing fast fashion markets.","The country exports garments for H&M, Gap, and Zara.","PFAS from textile dyeing is a major source of Java river pollution.","Indonesia has no specific PFAS textile regulations in place."] },
+  "Turkey":                 { rank:22, pfas:"~$15,500,000",   pfasRaw:15500000,   level:"low",      marketShare:"7.1%",  waste:"850K t/yr",  garments:"27/person", recycle:"17%", facts:["Turkey is Europe's primary fast fashion nearshoring hub supplying H&M and Zara.","Turkish brands like LC Waikiki are expanding across Eastern Europe and Africa.","Istanbul's garment district employs over 500,000 workers in fast fashion.","Turkey is reviewing PFAS chemical compliance under EU customs alignment."] },
+  "Bangladesh":             { rank:23, pfas:"~$12,000,000",   pfasRaw:12000000,   level:"low",      marketShare:"2.1%",  waste:"400K t/yr",  garments:"8/person",  recycle:"22%", facts:["Bangladesh is the world's 2nd largest garment exporter by volume.","PFAS used in factory finishing treatments enter the Buriganga River system.","The 2013 Rana Plaza collapse killed 1,138 workers and prompted global reform.","Bangladesh drives ~85% of its export earnings through the garment sector."] },
+  "Pakistan":               { rank:24, pfas:"~$10,000,000",   pfasRaw:10000000,   level:"low",      marketShare:"2.8%",  waste:"600K t/yr",  garments:"10/person", recycle:"20%", facts:["Pakistan is a top-ten global textile exporter with PFAS exposure in its supply chain.","The textile sector accounts for 60% of Pakistan's total exports.","Cotton farming for fast fashion depletes scarce Indus basin water resources.","Pakistan has no monitoring system for PFAS in textile factory wastewater."] },
+  "Australia":              { rank:25, pfas:"~$9,500,000",    pfasRaw:9500000,    level:"low",      marketShare:"9.2%",  waste:"800K t/yr",  garments:"56/person", recycle:"12%", facts:["Australians are among the world's highest per-capita fashion consumers.","~56 garments are purchased per person per year — twice the global average.","Australia has national PFAS guidelines but no specific textile restrictions.","~200,000 tons of fashion ends up in Australian landfill annually."] },
+  "Argentina":              { rank:26, pfas:"~$7,000,000",    pfasRaw:7000000,    level:"low",      marketShare:"4.2%",  waste:"900K t/yr",  garments:"16/person", recycle:"7%",  facts:["Argentina is South America's second-largest fashion market after Brazil.","Economic instability drives consumers toward low-cost fast fashion imports.","Less than 7% of textile waste is formally collected or recycled in Argentina.","PFAS monitoring near textile factories is essentially non-existent."] },
+  "Colombia":               { rank:27, pfas:"~$6,200,000",    pfasRaw:6200000,    level:"low",      marketShare:"4.4%",  waste:"780K t/yr",  garments:"14/person", recycle:"8%",  facts:["Colombia is a growing fast fashion market in Latin America.","Medellin's textile industry employs over 50,000 people.","Second-hand 'San Andresito' markets remain culturally important.","Consumer awareness of sustainable fashion is still in early stages."] },
+  "Chile":                  { rank:28, pfas:"~$5,500,000",    pfasRaw:5500000,    level:"low",      marketShare:"3.8%",  waste:"59K t/yr",   garments:"14/person", recycle:"5%",  facts:["Chile's Atacama Desert is the world's largest illegal fast fashion dump.","Roughly 59,000 tons of unsold clothing are discarded in the desert each year.","Iquique's free trade zone receives and redistributes fast fashion waste globally.","Chile proposed a law to ban clothing disposal in natural environments in 2023."] },
+  "Poland":                 { rank:29, pfas:"~$5,000,000",    pfasRaw:5000000,    level:"low",      marketShare:"4.8%",  waste:"500K t/yr",  garments:"20/person", recycle:"14%", facts:["Poland is Central Europe's largest fashion retail market.","Polish consumers have rapidly adopted fast fashion over the past decade.","Online fashion sales in Poland grew 55% between 2020 and 2023.","The second-hand market is expanding among urban Polish millennials."] },
+  "Saudi Arabia":           { rank:30, pfas:"~$4,800,000",    pfasRaw:4800000,    level:"low",      marketShare:"8.6%",  waste:"700K t/yr",  garments:"33/person", recycle:"6%",  facts:["Saudi Arabia is the Middle East's largest fashion retail market.","High disposable income and a young population drive rapid consumption cycles.","Fashion is among the fastest-growing e-commerce categories in Saudi Arabia.","Recycling infrastructure for textiles is almost entirely absent."] },
+  "United Arab Emirates":   { rank:31, pfas:"~$4,200,000",    pfasRaw:4200000,    level:"low",      marketShare:"9.5%",  waste:"300K t/yr",  garments:"45/person", recycle:"5%",  facts:["The UAE has one of the world's highest per-capita fashion consumption rates.","Dubai's mall culture drives clothing purchase-and-discard cycles.","Over 45 garments are purchased per person per year on average.","Textile recycling infrastructure in the UAE is minimal relative to volume."] },
+  "South Africa":           { rank:32, pfas:"~$3,900,000",    pfasRaw:3900000,    level:"low",      marketShare:"4.1%",  waste:"540K t/yr",  garments:"12/person", recycle:"11%", facts:["South Africa is Africa's largest fashion retail market.","Mr Price and Jet are dominant domestic fast fashion players.","Informal second-hand markets are widely used across the country.","Textile waste management infrastructure remains underdeveloped."] },
+  "Sweden":                 { rank:33, pfas:"~$3,500,000",    pfasRaw:3500000,    level:"low",      marketShare:"1.8%",  waste:"110K t/yr",  garments:"12/person", recycle:"52%", facts:["Sweden has the highest textile collection rate in Europe at 52%.","H&M, founded in Sweden, is one of the world's biggest fast fashion chains.","Sweden introduced a textile repair VAT reduction to incentivize mending.","Sweden is a key backer of the EU-wide PFAS ban in consumer textiles."] },
+  "Egypt":                  { rank:34, pfas:"~$3,200,000",    pfasRaw:3200000,    level:"low",      marketShare:"3.5%",  waste:"650K t/yr",  garments:"13/person", recycle:"14%", facts:["Egypt is Africa's largest textile producer and a key garment exporter.","Domestic fast fashion consumption is growing rapidly among urban youth.","Egyptian cotton is increasingly mixed with PFAS-treated synthetic fibers.","Textile factories along the Nile face scrutiny over wastewater management."] },
+  "Nigeria":                { rank:35, pfas:"~$2,800,000",    pfasRaw:2800000,    level:"low",      marketShare:"1.4%",  waste:"500K t/yr",  garments:"7/person",  recycle:"15%", facts:["Nigeria is Africa's second-largest fashion market.","Imported second-hand clothing ('okrika') dominates lower-income segments.","The Lagos fashion scene blends local design with global fast fashion trends.","Domestic textile manufacturing has declined due to cheap import competition."] },
+  "Portugal":               { rank:36, pfas:"~$2,500,000",    pfasRaw:2500000,    level:"low",      marketShare:"2.4%",  waste:"200K t/yr",  garments:"14/person", recycle:"28%", facts:["Portugal is a key production base for sustainable fashion brands across Europe.","Portuguese factories supply ethical-label brands like Patagonia and Eileen Fisher.","Domestic consumers show above-average interest in sustainable fashion.","Portugal's textile association has committed to carbon neutrality by 2030."] },
+  "Morocco":                { rank:37, pfas:"~$2,100,000",    pfasRaw:2100000,    level:"low",      marketShare:"1.9%",  waste:"200K t/yr",  garments:"9/person",  recycle:"16%", facts:["Morocco is a major fast fashion supplier to European brands like Mango and Zara.","Geographic proximity to Europe makes Morocco a key nearshoring hub.","Moroccan garment workers earn among the lowest wages in the global supply chain.","PFAS monitoring near Moroccan textile factories is limited."] },
+  "Kenya":                  { rank:38, pfas:"~$1,800,000",    pfasRaw:1800000,    level:"low",      marketShare:"0.8%",  waste:"180K t/yr",  garments:"5/person",  recycle:"20%", facts:["Kenya's Gikomba market is Africa's largest second-hand clothing hub.","Mitumba (used clothing) imports from Western countries displace local textile jobs.","The government proposed a ban on second-hand clothing imports in 2023.","Kenya's textile industry is pushing back against fast fashion dumping."] },
+  "Ghana":                  { rank:39, pfas:"~$1,500,000",    pfasRaw:1500000,    level:"low",      marketShare:"0.6%",  waste:"160K t/yr",  garments:"4/person",  recycle:"18%", facts:["Ghana's Kantamanto market is the world's largest second-hand clothing market.","Roughly 15 million used garments arrive in Accra each week from Western countries.","Around 40% of imported second-hand clothing is unsellable and becomes waste.","PFAS from discarded fast fashion items leach into Ghanaian soil and groundwater."] },
+  "Philippines":            { rank:40, pfas:"~$1,200,000",    pfasRaw:1200000,    level:"low",      marketShare:"3.2%",  waste:"700K t/yr",  garments:"12/person", recycle:"10%", facts:["The Philippines is a growing fast fashion consumer market in Southeast Asia.","Ukay-ukay (second-hand) markets remain culturally popular across income levels.","Fast fashion e-commerce grew 120% in the Philippines between 2020 and 2023.","Textile waste often ends up in waterways due to limited waste management capacity."] },
+  "Singapore":              { rank:41, pfas:"~$950,000",      pfasRaw:950000,     level:"low",      marketShare:"8.2%",  waste:"150K t/yr",  garments:"42/person", recycle:"6%",  facts:["Singapore has one of the highest per-capita fast fashion consumption rates in Asia.","~42 garments are bought per person per year on average.","Only 6% of textiles are recycled — the remainder goes to incineration.","Singapore launched its first 'Recycle N Save' textile pilot only in 2022."] },
+  "Peru":                   { rank:42, pfas:"~$800,000",      pfasRaw:800000,     level:"low",      marketShare:"2.2%",  waste:"300K t/yr",  garments:"10/person", recycle:"9%",  facts:["Peru is a significant producer of high-quality cotton and alpaca textiles.","Fast fashion imports are threatening domestic textile artisans and weavers.","Lima's growing middle class is a fast fashion consumer market on the rise.","Second-hand markets ('cachinas') remain important in lower-income communities."] },
+  "New Zealand":            { rank:43, pfas:"~$600,000",      pfasRaw:600000,     level:"low",      marketShare:"1.2%",  waste:"80K t/yr",   garments:"13/person", recycle:"45%", facts:["New Zealand leads Oceania in textile recycling rates at 45%.","Op shops (thrift stores) are culturally embedded in NZ consumer habits.","New Zealand has strict PFAS restrictions in firefighting foam but not yet in textiles.","Textile-to-textile recycling pilots launched by the government in 2023."] },
+  "Ethiopia":               { rank:44, pfas:"~$400,000",      pfasRaw:400000,     level:"low",      marketShare:"0.4%",  waste:"90K t/yr",   garments:"3/person",  recycle:"35%", facts:["Ethiopia is a growing manufacturing base for global fast fashion brands.","Hawassa Industrial Park employs thousands in garment production for export.","Domestic consumption remains very low due to purchasing power constraints.","Most textile output is exported; very little stays in the domestic market."] },
+  "Ukraine":                { rank:45, pfas:"~$350,000",      pfasRaw:350000,     level:"low",      marketShare:"3.3%",  waste:"400K t/yr",  garments:"14/person", recycle:"9%",  facts:["Ukraine was an emerging fast fashion manufacturing destination pre-2022.","The war significantly disrupted textile supply chains across Eastern Europe.","Second-hand clothing donations from abroad have flooded the domestic market.","Textile waste infrastructure remains underdeveloped outside major cities."] },
+  "Greece":                 { rank:46, pfas:"~$300,000",      pfasRaw:300000,     level:"low",      marketShare:"3.7%",  waste:"280K t/yr",  garments:"17/person", recycle:"16%", facts:["Greece imports a high share of its fast fashion from Turkey and Southeast Asia.","Economic austerity increased demand for lower-cost fast fashion in the 2010s.","PFAS monitoring near Greek ports and logistics hubs is very limited.","Recycling infrastructure lags behind Western European peers significantly."] }
+};
+
+const COLORS = { critical:"#b71c1c", high:"#e65100", moderate:"#f9a825", low:"#2e7d32" };
+const BCLS   = { critical:"bc", high:"bh", moderate:"bm", low:"bl" };
+const BLBLS  = { critical:"Critical · Top 5", high:"High · Top 6–10", moderate:"Moderate · Top 11–20", low:"Low / Est." };
+
+const MAX_PFAS = 4240000000;
+
+function fmtPfas(v) {
+  if (v >= 1e9) return "$" + (v/1e9).toFixed(2) + "B";
+  if (v >= 1e6) return "$" + (v/1e6).toFixed(1) + "M";
+  return "$" + (v/1e3).toFixed(0) + "K";
+}
+
+const svg = d3.select("#map-svg");
+const mapwrap = document.getElementById("mapwrap");
+const tt = document.getElementById("tt");
+
+const proj = d3.geoNaturalEarth1();
+const gpath = d3.geoPath().projection(proj);
+
+function fit() {
+  const w = mapwrap.clientWidth, h = mapwrap.clientHeight;
+  proj.scale(1).translate([0,0]);
+  const b = gpath.bounds({type:"Sphere"});
+  const sc = 0.93 / Math.max((b[1][0]-b[0][0])/w, (b[1][1]-b[0][1])/h);
+  proj.scale(sc).translate([(w - sc*(b[1][0]+b[0][0]))/2, (h - sc*(b[1][1]+b[0][1]))/2]);
+}
+
+function showPanel(name) {
+  const d = DATA[name]; if (!d) return;
+  svg.selectAll(".country").classed("sel", false);
+  svg.selectAll(".country").filter(f => resolve(f.properties.name) === name).classed("sel", true);
+
+  document.getElementById("prank").textContent = "#" + d.rank;
+  document.getElementById("pname").textContent = name;
+  const badge = document.getElementById("pbadge");
+  badge.textContent = BLBLS[d.level];
+  badge.className = "badge " + BCLS[d.level];
+
+  document.getElementById("ppfas").textContent = d.pfas;
+  document.getElementById("ppfas").style.color = COLORS[d.level];
+
+  const pct = Math.max(d.pfasRaw / MAX_PFAS * 100, 1);
+  const bar = document.getElementById("pbar");
+  bar.style.width = pct + "%";
+  bar.style.background = COLORS[d.level];
+  document.getElementById("pbar-cap").textContent =
+    Math.round(pct) + "% of China's PFAS textile usage (global #1)";
+
+  document.getElementById("pg").textContent = d.marketShare;
+  document.getElementById("pw").textContent = d.waste;
+  document.getElementById("pc").textContent = d.garments;
+  document.getElementById("pr").textContent = d.recycle;
+  document.getElementById("pfacts").innerHTML = d.facts.map(f => `<div class="fact">${f}</div>`).join("");
+
+  document.getElementById("idle").style.display = "none";
+  document.getElementById("pdata").classList.add("on");
+}
+
+document.getElementById("closex").addEventListener("click", () => {
+  document.getElementById("pdata").classList.remove("on");
+  document.getElementById("idle").style.display = "flex";
+  svg.selectAll(".country").classed("sel", false);
+});
+
+// Alias map: GeoJSON name variants -> DATA key
+const ALIASES = {
+  "USA": "United States of America",
+  "United States": "United States of America",
+  "US": "United States of America",
+  "UK": "United Kingdom",
+  "Great Britain": "United Kingdom",
+  "Korea, Republic of": "South Korea",
+  "Republic of Korea": "South Korea",
+  "Taiwan": "Taiwan",
+  "Republic of China": "Taiwan",
+  "Czechia": "Czech Republic",
+  "Czech Rep.": "Czech Republic",
+  "UAE": "United Arab Emirates",
+};
+
+function resolve(geoName) {
+  if (DATA[geoName]) return geoName;
+  return ALIASES[geoName] || null;
+}
+
+fetch("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+  .then(r => r.json())
+  .then(geo => {
+    fit();
+
+    const unmatched = Object.keys(DATA).filter(k => !geo.features.some(f => resolve(f.properties.name) === k));
+    if (unmatched.length) console.warn("DATA keys not matched in GeoJSON:", unmatched);
+
+    const grat = d3.geoGraticule()();
+    svg.append("path").datum(grat)
+      .attr("d", gpath).attr("fill","none")
+      .attr("stroke","#0d1020").attr("stroke-width","0.5");
+
+    svg.selectAll(".land").data(geo.features).enter()
+      .append("path").attr("class","land").attr("d", gpath);
+
+    svg.selectAll(".country")
+      .data(geo.features.filter(f => resolve(f.properties.name)))
+      .enter().append("path")
+      .attr("class","country")
+      .attr("d", gpath)
+      .attr("fill", f => COLORS[DATA[resolve(f.properties.name)].level])
+      .on("mouseenter", function(event, f) {
+        const key = resolve(f.properties.name);
+        const d = DATA[key];
+        tt.innerHTML = `<span class="tt-rank">#${d.rank}</span>${key} &nbsp;·&nbsp; PFAS: ${d.pfas}/yr`;
+        tt.classList.add("on");
+      })
+      .on("mousemove", function(event) {
+        const r = mapwrap.getBoundingClientRect();
+        tt.style.left = (event.clientX - r.left + 14) + "px";
+        tt.style.top  = (event.clientY - r.top  - 12) + "px";
+      })
+      .on("mouseleave", () => tt.classList.remove("on"))
+      .on("click", (_, f) => showPanel(resolve(f.properties.name)));
+  });
+
+window.addEventListener("resize", () => {
+  fit();
+  svg.selectAll("path").attr("d", gpath);
+});
+</script>
+</body>
+</html>
